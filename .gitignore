@@ -1,1 +1,12 @@
 .pyenv
+test*
+output*
+root*
+.vscode
+.ipynb_checkpoints
+logs
+***/*.ipynb
+***/*.root
+***/*.pdf
+***/*.png
+***/*.pyc
