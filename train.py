@@ -34,7 +34,7 @@ def build_model(nvars, model_name):
     """
     # build the model
     inputs = Input(shape=(nvars,)) # inputs
-    x = Dense(nvars*2, activiation='relu')(inputs) # inputs -> dense_1
+    x = Dense(nvars*2, activation='relu')(inputs) # inputs -> dense_1
     x = Dropout(0.1)(x) # out_dense_1 -> dropout
     x = Dense(nvars, activation='relu')(x) # out_dropout -> dense_2
     output = Dense(1, activation='sigmoid', name='output_layer')(x) # out_dense_2 -> output
