@@ -1,8 +1,8 @@
 import numpy as np
 import pandas as pd
 from keras import optimizers
-from keras.models import Sequential
-from keras.layers import Dense, Dropout
+from keras.models import Model
+from keras.layers import Input, Dense, Dropout
 from keras.callbacks import ModelCheckpoint, EarlyStopping, TensorBoard
 from sklearn.model_selection import train_test_split
 from time import time
@@ -20,6 +20,42 @@ wjet_names = [
     'WJets_Ht-2500ToInf_vlqAna',
 ]
 
+def build_model(nvars, model_name):
+    """
+    Build the neural network model and also a list of callbacks. 
+
+    Parameters:
+        nvars (int): number of training variables
+        model_name (string): name to give this model
+
+    Returns:
+        model (Keras.Model): NN architecture, ready to train
+        callbacks list: list of callbacks for training
+    """
+    # build the model
+    inputs = Input(shape=(nvars,)) # inputs
+    x = Dense(nvars*2, activiation='relu')(inputs) # inputs -> dense_1
+    x = Dropout(0.1)(x) # out_dense_1 -> dropout
+    x = Dense(nvars, activation='relu')(x) # out_dropout -> dense_2
+    output = Dense(1, activation='sigmoid', name='output_layer')(x) # out_dense_2 -> output
+    model = Model(inputs=inputs, outputs=output)
+
+    model.summary()
+    model.compile(optimizer='adam', loss='binary_crossentropy',
+                  metrics=['accuracy'])
+
+    # build callbacks
+    callbacks = [
+        EarlyStopping(monitor='val_loss', patience=50),
+        ModelCheckpoint('models/{}.hdf5'.format(model_name), monitor='val_loss',
+                        verbose=0, save_best_only=True,
+                        save_weights_only=False, mode='auto',
+                        period=1
+                        ),
+        TensorBoard(log_dir="logs/{}".format(time()), histogram_freq=200, write_grads=False, write_images=True)
+    ]
+    return model, callbacks
+
 
 def main(args):
     data = pd.HDFStore(args.input)['nominal']  # open dataframe
@@ -30,28 +66,8 @@ def main(args):
         'Angle_MuJet_Met'
     ]
 
-    nvars = len(training_variables)
-
-    # build the model
-    model = Sequential()
-    model.add(Dense(nvars*2, input_shape=(nvars,), name='input', activation='relu'))
-    model.add(Dropout(0.1))
-    model.add(Dense(nvars, name='hidden', activation='relu', kernel_initializer='normal'))
-    model.add(Dense(1, name='output', activation='sigmoid', kernel_initializer='normal'))
-    model.summary()
-    model.compile(optimizer='adam', loss='binary_crossentropy',
-                  metrics=['accuracy'])
-
-    # build callbacks
-    callbacks = [
-        EarlyStopping(monitor='val_loss', patience=50),
-        ModelCheckpoint('models/{}.hdf5'.format(args.model), monitor='val_loss',
-                        verbose=0, save_best_only=True,
-                        save_weights_only=False, mode='auto',
-                        period=1
-                        ),
-        TensorBoard(log_dir="logs/{}".format(time()), histogram_freq=200, write_grads=False, write_images=True)
-    ]
+    # build the model and callbacks
+    model, callbacks = build_model(len(training_variables), args.model)
 
     # get the data for the two-classes to discriminate
     training_processes = data[
