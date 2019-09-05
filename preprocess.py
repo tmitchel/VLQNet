@@ -30,12 +30,35 @@ wjet_xs = {
 
 
 def get_columns(fname):
+    """
+    Return variables to be kept and dropped. File specific reading
+    can be done using the fname parameter.
+
+    Parameters:
+        fname (string): name of input file
+    
+    Returns:
+        columns (list): columns to be read from the root file
+        todrop (list): columns to be dropped after some processing
+    """
     columns = scaled_vars + selection_vars + ['Evtwt']
     todrop = ['Evtwt', 'index']
     return columns, todrop
 
 
 def build_filelist(input_dir):
+    """
+    Build a list of input files to be processed. Files are split into
+    a few key groups. The systematics return value can be implemented
+    later to process systematics uncertainty files separately.
+
+    Parameters:
+        input_dir (string): path to input files
+
+    Returns:
+        nominal (map[string]list): map file group to list of files
+        systematics (map[string]list): empty map for now
+    """
     files = [ifile for ifile in glob('{}/*.root'.format(input_dir))]
 
     nominal = {
@@ -56,6 +79,18 @@ def build_filelist(input_dir):
 
 
 def scale_by_xs(weights, evts, fname):
+    """
+    Return evtwt's scaled by the process's cross section.
+
+    Parameters:
+        weights (pandas.Series): column containing event weights
+        evts (int): total number of processed events
+        fname (string): name of the input file
+
+    Returns:
+        weights (pandas.Series): input weights scaled by appropriate
+        cross sections
+    """
     lumi = 35900.
     if 'WJets' in fname:
         weights *= wjet_xs[fname] * lumi / evts
@@ -63,7 +98,21 @@ def scale_by_xs(weights, evts, fname):
 
 
 def process_files(all_data, files, is_signal):
+    """
+    Process input files, split into appropriate columns, do scaling, etc...
 
+    Parameters:
+        all_data (map[string]pandas.DataFrame): map from string to dataframes that are
+        to be filled. The "meta" key is for meta-information (non-training variables) like
+        the event weights, indexes, and unscaled selection variables. The "training" key
+        is for variables to be scaled and used in NN training.
+        files (list): list of input files
+        is_signal (bool): label for if file is signal or not
+    
+    Returns:
+        all_data (map[string]pandas.DataFrame): returns the provided map after filling
+        the DataFrames with rows from the processed files
+    """
     for ifile in files:
         print ifile
         columns, todrop = get_columns(ifile)  # if you need special branches from some files
@@ -112,7 +161,7 @@ def process_files(all_data, files, is_signal):
         # cleanup training variable dataframe
         single_training_df = slim_df.drop(selection_vars+todrop, axis=1)
         single_training_df = single_training_df.astype('float64')
-        single_training_df['notSM'] = isSignal
+        single_training_df['isSM'] = np.zeros(len(slim_df)) if is_signal == 1 else np.ones(len(slim_df))
 
         # combine with other files
         all_data['meta'] = pd.concat([all_data['meta'], single_meta_df])
@@ -121,6 +170,18 @@ def process_files(all_data, files, is_signal):
 
 
 def build_scaler(sm_only):
+    """
+    Build StandardScaler for training variables, do the fit, and save the
+    results to be used later.
+
+    Parameters:
+        sm_only (pandas.DataFrame): DataFrame of processed Standard Model files.
+        Non-Standard Model events should not be included.
+
+    Returns:
+        scaler (StandardScaler): mean-0, variance-1 scaler already fit to SM
+        scaler_info (pandas.DataFrame): information used to scale variables
+    """
     scaler = StandardScaler()
     # only fit the nominal backgrounds
     scaler.fit(sm_only.values)
@@ -135,6 +196,19 @@ def build_scaler(sm_only):
 
 
 def format_for_store(all_data, scaler):
+    """
+    Get the processed DataFrames ready for storage in our dataset file. "meta"
+    and "train" DataFrames are merged and the "train" variables are scaled.
+
+    Parameters:
+        all_data (map[string]pandas.DataFrame): all processed data
+        scaler (StandardScaler): mean-0, variance-1 scaler to be applied to
+        all_data['train]
+    
+    Returns:
+        formatted_data (pandas.DataFrame): merged DataFrame with all events/variables
+        included and scaled appropriately.
+    """
     # apply scaling to all samples
     formatted_data = pd.DataFrame(
         scaler.transform(all_data['train'].values),
@@ -167,7 +241,7 @@ def main(args):
     all_data = process_files(all_data, filelist['others'], is_signal=0)
 
     # build scaler using SM only
-    sm_only = all_data['train'][(all_data['train']['notSM'] == 1)]
+    sm_only = all_data['train'][(all_data['train']['isSM'] == 1)]
     scaler, store['scaler'] = build_scaler(sm_only)
 
     # format data and store

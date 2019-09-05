@@ -1,4 +1,3 @@
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from keras import optimizers
@@ -9,7 +8,7 @@ from sklearn.model_selection import train_test_split
 from time import time
 from os import environ
 from visualize import discPlot
-environ['KERAS_BACKEND'] = 'tensorflow'
+environ['KERAS_BACKEND'] = 'tensorflow'  # needed on Wisconsin cluster
 
 wjet_names = [
     'WJets_Ht-100To200_vlqAna',
@@ -23,7 +22,7 @@ wjet_names = [
 
 
 def main(args):
-    data = pd.HDFStore(args.input)['nominal']
+    data = pd.HDFStore(args.input)['nominal']  # open dataframe
     # define training variables
     training_variables = [
         'lepPt', 'leadJetPt', 'met', 'ST', 'HT', 'DPHI_Metlep',
@@ -56,18 +55,17 @@ def main(args):
 
     # get the data for the two-classes to discriminate
     training_processes = data[
-        (data['sample_names'].str.contains('TprimeBToBW_M')) | (data['sample_names'].str.contains('WJets'))
+        (data['sample_names'].str.contains(args.signal)) | (data['sample_names'].str.contains(args.background))
     ]
 
     # apply VBF category selection
-    # vbf_processes = training_processes[
+    # signal_processes = training_processes[
     #     # selection goes here
     # ]
-    vbf_processes = training_processes
-    print vbf_processes, vbf_processes['sample_names'].unique()
+    signal_processes = training_processes
 
-    sig_df = vbf_processes[(vbf_processes['sample_names'].str.contains('TprimeBToBW_M'))]
-    bkg_df = vbf_processes[(vbf_processes['sample_names'].str.contains('WJets'))]
+    sig_df = signal_processes[(signal_processes['sample_names'].str.contains(args.signal))]
+    bkg_df = signal_processes[(signal_processes['sample_names'].str.contains(args.background))]
 
     print 'No. Signal Events:     {}'.format(len(sig_df))
     print 'No. Background Events: {}'.format(len(bkg_df))
@@ -81,6 +79,7 @@ def main(args):
     # remove all columns except those needed for training
     training_dataframe = selected_events[training_variables + ['signal', 'evtwt']]
 
+    # get testing, training samples with 95% of data going to training
     training_data, testing_data, training_labels, testing_labels, training_weights, _ = train_test_split(
         training_dataframe[training_variables].values, training_dataframe['signal'].values, training_dataframe['evtwt'].values,
         test_size=0.05, random_state=7
@@ -117,12 +116,10 @@ def main(args):
 if __name__ == "__main__":
     from argparse import ArgumentParser
     parser = ArgumentParser()
-    parser.add_argument('--model', '-m', action='store', dest='model',
-                        default='testModel', help='name of the model to train')
-    parser.add_argument('--input', '-i', action='store', dest='input', default='test', help='full name of input file')
-    # parser.add_argument('--masspoint', '-m', required=True, help='mass point to train')
-    parser.add_argument('--background', '-b', action='store', dest='background',
-                        default='ZTT.root', help='name of background file')
+    parser.add_argument('--model', '-m',  required=True, help='name of the model to train')
+    parser.add_argument('--input', '-i', required=True, help='full name of input file')
+    parser.add_argument('--signal', '-s', required=True, help='signal to train with')
+    parser.add_argument('--background', '-b', required=True, help='name of background')
     parser.add_argument('--dont-plot', action='store_true', dest='dont_plot', help='don\'t make training plots')
 
     main(parser.parse_args())
